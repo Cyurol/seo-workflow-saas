@@ -1,0 +1,93 @@
+{
+  "name": "SEO内容生成工作流",
+  "description": "输入行业关键词，自动生成完整的SEO内容包（关键词+分类+软文+TDK）",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "name": "开始",
+      "next": "get_keywords"
+    },
+    {
+      "id": "get_keywords",
+      "type": "http_request",
+      "name": "挖掘长尾关键词",
+      "prompt": "调用关键词挖掘API",
+      "config": {
+        "method": "POST",
+        "url": "${API_BASE_URL}/api/v1/keywords/expand",
+        "body": {
+          "seed_keyword": "${input.keyword}",
+          "count": 30
+        }
+      },
+      "next": "classify_keywords"
+    },
+    {
+      "id": "classify_keywords",
+      "type": "http_request",
+      "name": "关键词意图分类",
+      "prompt": "将关键词分类为信息型/交易型/问答型",
+      "config": {
+        "method": "POST",
+        "url": "${API_BASE_URL}/api/v1/classify/",
+        "body": {
+          "keywords": "${get_keywords.keywords}"
+        }
+      },
+      "next": "generate_article"
+    },
+    {
+      "id": "generate_article",
+      "type": "llm",
+      "name": "生成SEO软文",
+      "prompt": "根据以下关键词和分类，生成一篇SEO友好的软文：\n\n关键词分类：\n- 信息型：${classify_keywords.informational}\n- 交易型：${classify_keywords.transactional}\n- 问答型：${classify_keywords.qa}\n\n要求：\n1. 文章围绕核心关键词展开\n2. 自然融入长尾关键词\n3. 结构清晰，有小标题\n4. 字数800-1500字\n5. 可读性强，对用户有价值",
+      "model": "claude-3-5-sonnet",
+      "next": "generate_tdk"
+    },
+    {
+      "id": "generate_tdk",
+      "type": "http_request",
+      "name": "生成TDK标签",
+      "prompt": "根据文章内容和关键词生成TDK",
+      "config": {
+        "method": "POST",
+        "url": "${API_BASE_URL}/api/v1/tdk/",
+        "body": {
+          "keyword": "${input.keyword}",
+          "intent_type": "informational",
+          "article_content": "${generate_article.content}"
+        }
+      },
+      "next": "format_output"
+    },
+    {
+      "id": "format_output",
+      "type": "code",
+      "name": "组装输出",
+      "code": "def format_output(data):\n    return {\n        '行业': data['input']['keyword'],\n        '关键词包': {\n            '总数': len(data['get_keywords']['keywords']),\n            '列表': data['get_keywords']['keywords'][:10]\n        },\n        '意图分类': data['classify_keywords'],\n        'SEO软文': data['generate_article']['content'],\n        'TDK标签': data['generate_tdk']\n    }"
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "结束",
+      "output": "${format_output.result}"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "keyword",
+      "name": "行业关键词",
+      "type": "string",
+      "required": true,
+      "example": "猫粮"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "result",
+      "name": "SEO内容包",
+      "type": "object"
+    }
+  ]
+}
